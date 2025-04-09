@@ -1354,6 +1354,9 @@ class BrowserToolkit(BaseToolkit):
 - `if_need_replan`: bool, 一个布尔值，表示任务是否需要从根本上重新规划。
 - `replanned_schema`: str, 任务的重新规划方案，与原方案相比不应该有太大变化。如果任务不需要重新规划，该值应为空字符串。
         """
+
+        # 重置 planning_agent 的历史消息 重要的历史信息已经包含在replanning_prompt中的history字段
+        self.planning_agent.reset()
         resp = self.planning_agent.step(replanning_prompt)
         resp_dict = _parse_json_output(resp.msgs[0].content)
 
