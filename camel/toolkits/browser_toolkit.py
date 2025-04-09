@@ -20,6 +20,7 @@ import random
 import re
 import shutil
 import time
+import urllib.parse
 from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
@@ -257,28 +258,12 @@ def add_set_of_mark(
     screenshot: Union[bytes, Image.Image, io.BufferedIOBase],
     ROIs: Dict[str, InteractiveRegion],
 ) -> Tuple[Image.Image, List[str], List[str], List[str]]:
-    """在截图上添加一组标记
-    
-    Args:
-        screenshot: 可以是字节流、PIL图像对象或IO缓冲区的截图
-        ROIs: 需要标记的交互区域字典
-        
-    Returns:
-        返回四元组:
-        - 标记后的图片
-        - 视口内可见的元素ID列表
-        - 视口上方的元素ID列表
-        - 视口下方的元素ID列表
-    """
-    # 如果输入已经是PIL图像对象，直接使用
     if isinstance(screenshot, Image.Image):
         return _add_set_of_mark(screenshot, ROIs)
 
-    # 如果输入是字节流，转换为IO缓冲区
     if isinstance(screenshot, bytes):
         screenshot = io.BytesIO(screenshot)
 
-    # 打开图片，添加标记，然后关闭
     image = Image.open(cast(BinaryIO, screenshot))
     comp, visible_rects, rects_above, rects_below = _add_set_of_mark(
         image, ROIs
@@ -288,60 +273,51 @@ def add_set_of_mark(
 
 
 def _add_set_of_mark(
-    screenshot: Image.Image, 
-    ROIs: Dict[str, InteractiveRegion]
+    screenshot: Image.Image, ROIs: Dict[str, InteractiveRegion]
 ) -> Tuple[Image.Image, List[str], List[str], List[str]]:
-    """在截图上添加标记的核心实现
-    
+    r"""Add a set of marks to the screenshot.
+
     Args:
-        screenshot: PIL图像对象
-        ROIs: 需要标记的交互区域字典
-        
+        screenshot (Image.Image): The screenshot to add marks to.
+        ROIs (Dict[str, InteractiveRegion]): The regions to add marks to.
+
     Returns:
-        返回四元组:
-        - 标记后的图片
-        - 视口内可见的元素ID列表
-        - 视口上方的元素ID列表 
-        - 视口下方的元素ID列表
+        Tuple[Image.Image, List[str], List[str], List[str]]: A tuple
+        containing the screenshot with marked ROIs, ROIs fully within the
+        images, ROIs located above the visible area, and ROIs located below
+        the visible area.
     """
-    # 初始化三个列表存储不同位置的元素
-    visible_rects: List[str] = list()  # 可见元素
-    rects_above: List[str] = list()    # 视口上方元素
-    rects_below: List[str] = list()    # 视口下方元素
+    visible_rects: List[str] = list()
+    rects_above: List[str] = list()  # Scroll up to see
+    rects_below: List[str] = list()  # Scroll down to see
 
-    # 准备绘图工具
-    fnt = ImageFont.load_default(14)  # 加载默认字体
-    base = screenshot.convert("L").convert("RGBA")  # 转换为RGBA模式
-    overlay = Image.new("RGBA", base.size)  # 创建透明覆盖层
-    draw = ImageDraw.Draw(overlay)  # 创建绘图对象
+    fnt = ImageFont.load_default(14)
+    base = screenshot.convert("L").convert("RGBA")
+    overlay = Image.new("RGBA", base.size)
 
-    # 遍历所有交互区域
+    draw = ImageDraw.Draw(overlay)
     for r in ROIs:
         for rect in ROIs[r]["rects"]:
-            # 跳过空矩形
+            # Empty rectangles
             if not rect or rect["width"] == 0 or rect["height"] == 0:
                 continue
 
-            # 计算元素的中心位置
+            # TODO: add scroll left and right?
             horizontal_center = (rect["right"] + rect["left"]) / 2.0
             vertical_center = (rect["top"] + rect["bottom"]) / 2.0
-            
-            # 判断元素位置
-            is_within_horizon = 0 <= horizontal_center < base.size[0]  # 水平方向在视口内
-            is_above_viewport = vertical_center < 0  # 在视口上方
-            is_below_viewport = vertical_center >= base.size[1]  # 在视口下方
+            is_within_horizon = 0 <= horizontal_center < base.size[0]
+            is_above_viewport = vertical_center < 0
+            is_below_viewport = vertical_center >= base.size[1]
 
-            # 根据位置分类并处理
             if is_within_horizon:
                 if is_above_viewport:
                     rects_above.append(r)
                 elif is_below_viewport:
                     rects_below.append(r)
-                else:  # 完全可见
+                else:  # Fully visible
                     visible_rects.append(r)
-                    _draw_roi(draw, int(r), fnt, rect)  # 绘制标记
+                    _draw_roi(draw, int(r), fnt, rect)
 
-    # 合并原图和标记层
     comp = Image.alpha_composite(base, overlay)
     overlay.close()
     return comp, visible_rects, rects_above, rects_below
@@ -554,8 +530,10 @@ class BaseBrowser:
         file_path = None
         if save_image:
             # Get url name to form a file name
-            # TODO: Use a safer way for the url name
-            url_name = self.page_url.split("/")[-1]
+            # Use urlparser for a safer extraction the url name
+            parsed_url = urllib.parse.urlparse(self.page_url)
+            url_name = os.path.basename(str(parsed_url.path)) or "index"
+
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '.']:
                 url_name = url_name.replace(char, "_")
 
@@ -655,46 +633,40 @@ class BaseBrowser:
 
         return typed_results  # type: ignore[return-value]
 
-    def get_som_screenshot(self, save_image: bool = False) -> Tuple[Image.Image, Union[str, None], Dict[str, InteractiveRegion]]:
-        """获取带有交互元素标记的当前视口截图
-        
+    def get_som_screenshot(
+        self,
+        save_image: bool = False,
+    ) -> Tuple[Image.Image, Union[str, None]]:
+        r"""Get a screenshot of the current viewport with interactive elements
+        marked.
+
         Args:
-            save_image (bool): 是否保存图片到缓存目录
-            
+            save_image (bool): Whether to save the image to the cache
+                directory.
+
         Returns:
-            Tuple[Image.Image, str, Dict[str, InteractiveRegion]]: 返回标记后的截图图像、保存路径(如果保存的话)和可交互元素列表
+            Tuple[Image.Image, str]: A tuple containing the screenshot image
+                and the path to the image file.
         """
-        # 1. 等待页面加载完成
+
         self._wait_for_load()
-        
-        # 2. 获取原始截图
         screenshot, _ = self.get_screenshot(save_image=False)
-        
-        # 3. 获取页面上所有可交互元素
         rects = self.get_interactive_elements()
 
-        # 4. 在截图上添加标记
+        file_path = None
         comp, visible_rects, rects_above, rects_below = add_set_of_mark(
             screenshot,
             rects,  # type: ignore[arg-type]
         )
-
-        # 5. 如果需要保存图片
-        file_path = None
         if save_image:
-            # 从URL生成文件名
-            url_name = self.page_url.split("/")[-1]
-            # 移除不合法的文件名字符
+            parsed_url = urllib.parse.urlparse(self.page_url)
+            url_name = os.path.basename(str(parsed_url.path)) or "index"
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '.']:
                 url_name = url_name.replace(char, "_")
-            
-            # 添加时间戳
             timestamp = datetime.datetime.now().strftime("%m%d%H%M%S")
-            # 构建完整的文件路径
             file_path = os.path.join(
                 self.cache_dir, f"{url_name}_{timestamp}.png"
             )
-            # 保存图片
             with open(file_path, "wb") as f:
                 comp.save(f, "PNG")
             f.close()
@@ -1100,7 +1072,7 @@ class BrowserToolkit(BaseToolkit):
         # 获取当前状态截图和可交互元素
         som_screenshot, _, interactive_elements = self.browser.get_som_screenshot(save_image=True)
         img = _reload_image(som_screenshot)
-        
+
         # 提取元素ID和类型信息
         elements_info = []
         for element_id, element_data in interactive_elements.items():
@@ -1181,10 +1153,6 @@ class BrowserToolkit(BaseToolkit):
         observation_result: str = resp_dict.get("observation", "")
         reasoning_result: str = resp_dict.get("reasoning", "")
         action_code: str = resp_dict.get("action_code", "")
-
-        # 修复 stop() 函数调用，移除任何参数
-        if action_code and "stop" in action_code:
-            action_code = "stop()"
 
         if action_code and "(" in action_code and ")" not in action_code:
             action_match = re.search(
