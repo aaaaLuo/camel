@@ -512,26 +512,18 @@ class RolePlaying:
         self,
         assistant_msg: BaseMessage,
     ) -> Tuple[ChatAgentResponse, ChatAgentResponse]:
-        r"""Advances the conversation by taking a message from the assistant,
-        processing it using the user agent, and then processing the resulting
-        message using the assistant agent. Returns a tuple containing the
-        resulting assistant message, whether the assistant agent terminated
-        the conversation, and any additional assistant information, as well as
-        a tuple containing the resulting user message, whether the user agent
-        terminated the conversation, and any additional user information.
+        r"""推进对话，通过接收来自助手的消息，
+        使用用户代理对其进行处理，然后使用助手代理处理生成的消息。
+        返回一个元组，包含生成的助手消息、助手代理是否终止了对话以及任何额外的助手信息，
+        以及另一个元组，包含生成的用户消息、用户代理是否终止了对话以及任何额外的用户信息。
 
-        Args:
-            assistant_msg: A `BaseMessage` representing the message from the
-                assistant.
+        参数：
+            assistant_msg: 一个 `BaseMessage` 对象，表示来自助手的消息。
 
-        Returns:
-            Tuple[ChatAgentResponse, ChatAgentResponse]: A tuple containing two
-                ChatAgentResponse: the first struct contains the resulting
-                assistant message, whether the assistant agent terminated the
-                conversation, and any additional assistant information; the
-                second struct contains the resulting user message, whether the
-                user agent terminated the conversation, and any additional user
-                information.
+        返回值：
+            Tuple[ChatAgentResponse, ChatAgentResponse]：一个包含两个 ChatAgentResponse 的元组：
+                第一个结构包含生成的助手消息、助手代理是否终止了对话以及任何额外的助手信息；
+                第二个结构包含生成的用户消息、用户代理是否终止了对话以及任何额外的用户信息。
         """
         user_response = self.user_agent.step(assistant_msg)
         if user_response.terminated or user_response.msgs is None:
@@ -544,10 +536,8 @@ class RolePlaying:
                 ),
             )
         user_msg = self._reduce_message_options(user_response.msgs)
-
-        # To prevent recording the same memory more than once (once in chat
-        # step and once in role play), and the model generates only one
-        # response when multi-response support is enabled.
+        # 防止同一记忆被记录超过一次（一次在聊天步骤中，一次在角色扮演中），    
+        # 并且当多响应支持启用时，模型只生成一个响应。
         if (
             'n' in self.user_agent.model_backend.model_config_dict.keys()
             and self.user_agent.model_backend.model_config_dict['n'] > 1
@@ -567,10 +557,9 @@ class RolePlaying:
                 ),
             )
         assistant_msg = self._reduce_message_options(assistant_response.msgs)
-
-        # To prevent recording the same memory more than once (once in chat
-        # step and once in role play), and the model generates only one
-        # response when multi-response support is enabled.
+        
+        # 防止同一记忆被记录超过一次（一次在聊天步骤中，一次在角色扮演中），
+        # 并且当多响应支持启用时，模型只生成一个响应。
         if (
             'n' in self.assistant_agent.model_backend.model_config_dict.keys()
             and self.assistant_agent.model_backend.model_config_dict['n'] > 1

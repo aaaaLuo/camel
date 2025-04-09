@@ -1024,7 +1024,7 @@ class BrowserToolkit(BaseToolkit):
             headless=headless, cache_dir=cache_dir, channel=channel
         )
         # This needs to be called explicitly
-        self.browser.init()
+        # self.browser.init()
 
         self.history_window = history_window
         self.web_agent_model = web_agent_model
@@ -1108,67 +1108,71 @@ class BrowserToolkit(BaseToolkit):
 
         # 将元素信息添加到提示中
         elements_prompt = f"""
-当前页面上的可交互元素列表：
+当前页面上的可交互元素id列表：
 {elements_info}
 """
-        
+
         # 更新提示词
         observe_prompt = f"""
-请作为一个网页代理来帮助我完成以下高级任务:
-<task>{task_prompt}</task>
-现在,我已经基于当前浏览器状态制作了截图(仅当前视口,非整个网页),并标记了网页中的交互元素。
-请仔细检查任务要求和浏览器的当前状态,并提供下一个适当的操作。
+        您是一个网页代理，需帮助我完成以下高级任务：
+        <task>{task_prompt}</task>
+        当前，我已基于浏览器状态制作了截图（仅当前视口，非整个网页），并标记了交互元素。
+        请根据任务要求和当前视口状态，提供下一个适当操作。
 
-{detailed_plan_prompt}
+        {detailed_plan_prompt}
 
-以下是当前可用的浏览器功能:
-{AVAILABLE_ACTIONS_PROMPT}
-# {elements_prompt}
-以下是您最近执行的{self.history_window}个轨迹(最多):
-<history>
-{self.history[-self.history_window:]}
-</history>
+        ### 当前可用信息
+        - **交互元素**：{elements_prompt}
+        - **浏览器功能**：{AVAILABLE_ACTIONS_PROMPT}
+        - **最近操作历史**（最多 {self.history_window} 条）：
+          <history>{self.history[-self.history_window:]}</history>
 
-您的输出应该是json格式,包含以下字段:
-- `observation`: 关于当前视口的详细图像描述。不要对历史操作的正确性过于自信。您应该始终检查当前视口以确保下一个操作的正确性。
-- `reasoning`: 关于您想要采取的下一个操作的推理,可能遇到的障碍,以及如何解决这些障碍。不要忘记检查历史操作以避免相同的错误。
-- `action_code`: 您想要采取的操作代码。这只是一个步骤的操作代码,不包含任何其他文本(如注释)
+        ### 输出要求
+        以 JSON 格式返回以下字段：
+        - `observation`：当前视口的详细描述，基于截图观察，避免对历史操作过度假设。
+        - `reasoning`：下一步操作的推理，包括可能障碍及解决思路，参考历史避免重复错误。
+        - `action_code`：具体操作代码，仅一步，不含注释。
 
-这是输出的两个示例:
+        #### 输出示例
 ```json
-{{
-    "observation": [图像描述],
-    "reasoning": [您的推理],
-    "action_code": "fill_input_id([ID], [TEXT])"
-}}
-
-{{
-    "observation": "当前页面是亚马逊的验证码验证页面。它要求用户...",
-    "reasoning": "为了继续搜索产品的任务,我需要完成...",
-    "action_code": "fill_input_id(3, 'AUXPMR')"
-}}
+        {{
+            "observation": "当前视口显示亚马逊搜索页面，包含输入框和搜索按钮。",
+            "reasoning": "任务要求搜索产品，需先填写搜索词并提交。",
+            "action_code": "fill_input_id(1, 'laptop')"
+        }}
+        {{
+            "observation": [图像描述],
+            "reasoning": [您的推理],
+            "action_code": "fill_input_id([ID], [TEXT])"
+        }}
 ```
 
-以下是一些提示:
-- 永远不要忘记总体问题: **{task_prompt}**
-- 使用上面提供的可交互元素列表来确保您使用的ID是真实存在的
-- 也许在某些操作(例如click_id)之后,页面内容没有改变。您可以通过查看历史记录中操作步骤的`success`来检查操作步骤是否成功。如果成功,这意味着点击后页面内容确实相同。您需要尝试其他方法。
-- 如果使用一种方法解决问题不成功,请尝试其他方法。确保您提供的ID是正确的!
-- 有些情况非常复杂,需要通过迭代过程来实现。您可以使用`back()`函数返回上一页尝试其他方法。
-- 页面上有许多链接,这些链接可能对解决问题有用。您可以使用`click_id()`函数点击链接看看是否有用。
-- 始终记住您的操作必须基于当前图像或视口中显示的ID,而不是历史记录中显示的ID。
-- 不要轻易使用`stop()`。始终提醒自己图像只显示了完整页面的一部分。如果找不到答案,在做其他事情之前,请尝试使用`scroll_up()`和`scroll_down()`等功能检查网页的完整内容,因为答案或下一个关键步骤可能隐藏在下面的内容中。
-- 如果网页需要人工验证,您必须避免处理它。请使用`back()`返回上一页,并尝试其他方法。
-- 如果您已经尝试了所有方法仍然无法解决问题,请停止模拟,并报告您遇到的问题。
-- 仔细检查历史操作,检测是否重复执行了相同的操作。
-- 在处理维基百科修订历史相关任务时,您需要灵活思考解决方案。首先,将单页显示的浏览历史调整到最大,然后利用find_text_on_page功能。这非常有用,可以快速定位您想要找到的文本,跳过大量无用信息。
-- 灵活使用下拉选择栏等交互元素来筛选所需信息。有时它们非常有用。
+操作指南：
+1.任务导向：始终围绕 {task_prompt} 推进，基于当前视口选择操作。
+2.ID 准确性：仅使用 {elements_prompt} 中提供的交互元素 ID。
+3.页面检查：
+若操作（如 click_id）后页面未变，参考历史中的 success 判断是否成功。
+未找到答案时，使用 scroll_up() 或 scroll_down() 检查完整页面。
+4.错误处理：
+若方法无效，使用 back() 回退，尝试其他路径（如点击链接）。
+遇到人工验证时，使用 back() 规避。
+5.复杂场景：
+处理维基百科修订历史时，先调整单页显示条目至最大，再用 find_text_on_page 定位关键信息。
+灵活使用下拉菜单筛选内容。
+6.停止条件：
+仅在所有方法无效时使用 stop()，并说明问题。
+注意事项：
+1.操作必须基于当前视口 ID，而非历史记录。
+2.避免重复执行相同操作，检查历史以优化决策。
+3.若无法解决，报告具体困难并停止。  
         """
 
         # 将截图和更新后的提示发送给模型
         message = BaseMessage.make_user_message(
             role_name='user', content=observe_prompt, image_list=[img]
         )
+        # 重置web_agent的历史消息 重要的历史信息已经包含在observe_prompt中的history字段
+        self.web_agent.reset()
         resp = self.web_agent.step(message)
 
         resp_content = resp.msgs[0].content
@@ -1177,6 +1181,10 @@ class BrowserToolkit(BaseToolkit):
         observation_result: str = resp_dict.get("observation", "")
         reasoning_result: str = resp_dict.get("reasoning", "")
         action_code: str = resp_dict.get("action_code", "")
+
+        # 修复 stop() 函数调用，移除任何参数
+        if action_code and "stop" in action_code:
+            action_code = "stop()"
 
         if action_code and "(" in action_code and ")" not in action_code:
             action_match = re.search(
@@ -1342,11 +1350,14 @@ class BrowserToolkit(BaseToolkit):
     def _task_planning(self, task_prompt: str, start_url: str) -> str:
         planning_prompt = f"""
 <task>{task_prompt}</task>
-根据上述问题，如果我们使用浏览器交互，在访问网页 `{start_url}` 后的一般交互过程是什么？
-
-请注意，这可以被视为部分可观察马尔可夫决策过程。不要对您的计划过于自信。
-请首先详细重述任务，然后提供详细的解决方案计划。
+根据上述问题，假设我们通过浏览器进行交互，在访问初始网页 `{start_url}` 后，一般的交互过程是怎样的？  
+请注意，需考虑部分可观察马尔可夫决策过程（POMDP）的特性，即网页的状态只能被部分观察到，因此信息是不完全的。  
+在回答时，请避免对你的计划表现出过度自信。  
+请按照以下步骤作答：  
+1. 首先详细重述任务，确保对问题的理解准确无误；  
+2. 然后提供一个详细的解决方案计划，描述交互的具体步骤和方法。
         """
+
         message = BaseMessage.make_user_message(
             role_name='user', content=planning_prompt
         )
@@ -1363,7 +1374,7 @@ class BrowserToolkit(BaseToolkit):
 <overall_task>{task_prompt}</overall_task>
 
 为了解决这个任务，我们之前制定了一个详细计划。以下是该计划：
-<detailed plan>{detailed_plan}</detailed plan>
+<detailed_plan>{detailed_plan}</detailed_plan>
 
 根据上述任务，我们已经进行了一系列观察、推理和操作。以下是我们最近执行的{self.history_window}个轨迹（最多）：
 <history>{self.history[-self.history_window:]}</history>
