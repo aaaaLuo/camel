@@ -52,38 +52,21 @@ logger = get_logger(__name__)
 TOP_NO_LABEL_ZONE = 20
 
 AVAILABLE_ACTIONS_PROMPT = """
-1. `fill_input_id(identifier: Union[str, int], text: str)`: Fill an input
-field (e.g. search box) with the given text and press Enter.
-2. `click_id(identifier: Union[str, int])`: Click an element with the given ID.
-3. `hover_id(identifier: Union[str, int])`: Hover over an element with the
-given ID.
-4. `download_file_id(identifier: Union[str, int])`: Download a file with the
-given ID. It returns the path to the downloaded file. If the file is
-successfully downloaded, you can stop the simulation and report the path to
-the downloaded file for further processing.
-5. `scroll_to_bottom()`: Scroll to the bottom of the page.
-6. `scroll_to_top()`: Scroll to the top of the page.
-7. `scroll_up()`: Scroll up the page. It is suitable when you want to see the
-elements above the current viewport.
-8. `scroll_down()`: Scroll down the page. It is suitable when you want to see
-the elements below the current viewport. If the webpage does not change, It
-means that the webpage has scrolled to the bottom.
-9. `back()`: Navigate back to the previous page. This is useful when you want
-to go back to the previous page, as current page is not useful.
-10. `stop()`: Stop the action process, because the task is completed or failed
-(impossible to find the answer). In this situation, you should provide your
-answer in your output.
-11. `get_url()`: Get the current URL of the current page.
-12. `find_text_on_page(search_text: str)`: Find the next given text on the
-current whole page, and scroll the page to the targeted text. It is equivalent
-to pressing Ctrl + F and searching for the text, and is powerful when you want
-to fast-check whether the current page contains some specific text.
-13. `visit_page(url: str)`: Go to the specific url page.
-14. `click_blank_area()`: Click a blank area of the page to unfocus the
-current element. It is useful when you have clicked an element but it cannot
-unfocus itself (e.g. Menu bar) to automatically render the updated webpage.
-15. `ask_question_about_video(question: str)`: Ask a question about the
-current webpage which contains video, e.g. youtube websites.
+1. `fill_input_id(identifier: Union[str, int], text: str)`: 在指定的输入框中填入文本并按回车键。
+2. `click_id(identifier: Union[str, int])`: 点击具有指定ID的元素。
+3. `hover_id(identifier: Union[str, int])`: 将鼠标悬停在具有指定ID的元素上。
+4. `download_file_id(identifier: Union[str, int])`: 下载具有指定ID的文件。返回下载文件的路径。如果文件下载成功,您可以停止模拟并报告下载文件的路径以供进一步处理。
+5. `scroll_to_bottom()`: 滚动到页面底部。
+6. `scroll_to_top()`: 滚动到页面顶部。
+7. `scroll_up()`: 向上滚动页面。当您想查看当前视口上方的元素时使用。
+8. `scroll_down()`: 向下滚动页面。当您想查看当前视口下方的元素时使用。如果网页没有变化,说明已经滚动到底部。
+9. `back()`: 返回上一页。当当前页面无用时,这个功能很有用。
+10. `stop()`: 停止操作过程,因为任务已完成或失败(无法找到答案)。在这种情况下,您应该在输出中提供您的答案。
+11. `get_url()`: 获取当前页面的URL。
+12. `find_text_on_page(search_text: str)`: 在当前整个页面中查找指定文本,并将页面滚动到目标文本处。这相当于按Ctrl + F并搜索文本,当您想快速检查当前页面是否包含某些特定文本时非常有用。
+13. `visit_page(url: str)`: 访问指定的URL页面。
+14. `click_blank_area()`: 点击页面的空白区域以取消当前元素的焦点。当您点击了一个元素但它无法自动取消焦点(例如菜单栏)以自动渲染更新的网页时,这很有用。
+15. `ask_question_about_video(question: str)`: 询问关于当前包含视频的网页的问题,例如YouTube网站。
 """
 
 ACTION_WITH_FEEDBACK_LIST = [
@@ -274,12 +257,28 @@ def add_set_of_mark(
     screenshot: Union[bytes, Image.Image, io.BufferedIOBase],
     ROIs: Dict[str, InteractiveRegion],
 ) -> Tuple[Image.Image, List[str], List[str], List[str]]:
+    """在截图上添加一组标记
+    
+    Args:
+        screenshot: 可以是字节流、PIL图像对象或IO缓冲区的截图
+        ROIs: 需要标记的交互区域字典
+        
+    Returns:
+        返回四元组:
+        - 标记后的图片
+        - 视口内可见的元素ID列表
+        - 视口上方的元素ID列表
+        - 视口下方的元素ID列表
+    """
+    # 如果输入已经是PIL图像对象，直接使用
     if isinstance(screenshot, Image.Image):
         return _add_set_of_mark(screenshot, ROIs)
 
+    # 如果输入是字节流，转换为IO缓冲区
     if isinstance(screenshot, bytes):
         screenshot = io.BytesIO(screenshot)
 
+    # 打开图片，添加标记，然后关闭
     image = Image.open(cast(BinaryIO, screenshot))
     comp, visible_rects, rects_above, rects_below = _add_set_of_mark(
         image, ROIs
@@ -289,51 +288,60 @@ def add_set_of_mark(
 
 
 def _add_set_of_mark(
-    screenshot: Image.Image, ROIs: Dict[str, InteractiveRegion]
+    screenshot: Image.Image, 
+    ROIs: Dict[str, InteractiveRegion]
 ) -> Tuple[Image.Image, List[str], List[str], List[str]]:
-    r"""Add a set of marks to the screenshot.
-
+    """在截图上添加标记的核心实现
+    
     Args:
-        screenshot (Image.Image): The screenshot to add marks to.
-        ROIs (Dict[str, InteractiveRegion]): The regions to add marks to.
-
+        screenshot: PIL图像对象
+        ROIs: 需要标记的交互区域字典
+        
     Returns:
-        Tuple[Image.Image, List[str], List[str], List[str]]: A tuple
-        containing the screenshot with marked ROIs, ROIs fully within the
-        images, ROIs located above the visible area, and ROIs located below
-        the visible area.
+        返回四元组:
+        - 标记后的图片
+        - 视口内可见的元素ID列表
+        - 视口上方的元素ID列表 
+        - 视口下方的元素ID列表
     """
-    visible_rects: List[str] = list()
-    rects_above: List[str] = list()  # Scroll up to see
-    rects_below: List[str] = list()  # Scroll down to see
+    # 初始化三个列表存储不同位置的元素
+    visible_rects: List[str] = list()  # 可见元素
+    rects_above: List[str] = list()    # 视口上方元素
+    rects_below: List[str] = list()    # 视口下方元素
 
-    fnt = ImageFont.load_default(14)
-    base = screenshot.convert("L").convert("RGBA")
-    overlay = Image.new("RGBA", base.size)
+    # 准备绘图工具
+    fnt = ImageFont.load_default(14)  # 加载默认字体
+    base = screenshot.convert("L").convert("RGBA")  # 转换为RGBA模式
+    overlay = Image.new("RGBA", base.size)  # 创建透明覆盖层
+    draw = ImageDraw.Draw(overlay)  # 创建绘图对象
 
-    draw = ImageDraw.Draw(overlay)
+    # 遍历所有交互区域
     for r in ROIs:
         for rect in ROIs[r]["rects"]:
-            # Empty rectangles
+            # 跳过空矩形
             if not rect or rect["width"] == 0 or rect["height"] == 0:
                 continue
 
-            # TODO: add scroll left and right?
+            # 计算元素的中心位置
             horizontal_center = (rect["right"] + rect["left"]) / 2.0
             vertical_center = (rect["top"] + rect["bottom"]) / 2.0
-            is_within_horizon = 0 <= horizontal_center < base.size[0]
-            is_above_viewport = vertical_center < 0
-            is_below_viewport = vertical_center >= base.size[1]
+            
+            # 判断元素位置
+            is_within_horizon = 0 <= horizontal_center < base.size[0]  # 水平方向在视口内
+            is_above_viewport = vertical_center < 0  # 在视口上方
+            is_below_viewport = vertical_center >= base.size[1]  # 在视口下方
 
+            # 根据位置分类并处理
             if is_within_horizon:
                 if is_above_viewport:
                     rects_above.append(r)
                 elif is_below_viewport:
                     rects_below.append(r)
-                else:  # Fully visible
+                else:  # 完全可见
                     visible_rects.append(r)
-                    _draw_roi(draw, int(r), fnt, rect)
+                    _draw_roi(draw, int(r), fnt, rect)  # 绘制标记
 
+    # 合并原图和标记层
     comp = Image.alpha_composite(base, overlay)
     overlay.close()
     return comp, visible_rects, rects_above, rects_below
@@ -647,39 +655,46 @@ class BaseBrowser:
 
         return typed_results  # type: ignore[return-value]
 
-    def get_som_screenshot(
-        self,
-        save_image: bool = False,
-    ) -> Tuple[Image.Image, Union[str, None]]:
-        r"""Get a screenshot of the current viewport with interactive elements
-        marked.
-
+    def get_som_screenshot(self, save_image: bool = False) -> Tuple[Image.Image, Union[str, None]]:
+        """获取带有交互元素标记的当前视口截图
+        
         Args:
-            save_image (bool): Whether to save the image to the cache
-                directory.
-
+            save_image (bool): 是否保存图片到缓存目录
+            
         Returns:
-            Tuple[Image.Image, str]: A tuple containing the screenshot image
-                and the path to the image file.
+            Tuple[Image.Image, str]: 返回标记后的截图图像和保存路径(如果保存的话)
         """
-
+        # 1. 等待页面加载完成
         self._wait_for_load()
+        
+        # 2. 获取原始截图
         screenshot, _ = self.get_screenshot(save_image=False)
+        
+        # 3. 获取页面上所有可交互元素
         rects = self.get_interactive_elements()
 
-        file_path = None
+        # 4. 在截图上添加标记
         comp, visible_rects, rects_above, rects_below = add_set_of_mark(
             screenshot,
             rects,  # type: ignore[arg-type]
         )
+
+        # 5. 如果需要保存图片
+        file_path = None
         if save_image:
+            # 从URL生成文件名
             url_name = self.page_url.split("/")[-1]
+            # 移除不合法的文件名字符
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '.']:
                 url_name = url_name.replace(char, "_")
+            
+            # 添加时间戳
             timestamp = datetime.datetime.now().strftime("%m%d%H%M%S")
+            # 构建完整的文件路径
             file_path = os.path.join(
                 self.cache_dir, f"{url_name}_{timestamp}.png"
             )
+            # 保存图片
             with open(file_path, "wb") as f:
                 comp.save(f, "PNG")
             f.close()
@@ -1047,9 +1062,8 @@ class BrowserToolkit(BaseToolkit):
             planning_model = self.planning_agent_model
 
         system_prompt = """
-You are a helpful web agent that can assist users in browsing the web.
-Given a high-level task, you can leverage predefined browser tools to help
-users achieve their goals.
+您是一个称职的网页代理,可以协助用户浏览网页。
+给定一个高级任务,您可以利用预定义的浏览器工具来帮助用户实现他们的目标。
         """
 
         web_agent = ChatAgent(
@@ -1059,8 +1073,7 @@ users achieve their goals.
         )
 
         planning_system_prompt = """
-You are a helpful planning agent that can assist users in planning complex
-tasks which need multi-step browser interaction.
+您是一个优秀的规划代理,可以协助用户规划需要多步浏览器交互的复杂任务。
         """
 
         planning_agent = ChatAgent(
@@ -1080,88 +1093,58 @@ tasks which need multi-step browser interaction.
 
         if detailed_plan is not None:
             detailed_plan_prompt = f"""
-Here is a plan about how to solve the task step-by-step which you must follow:
+这里是一个关于如何逐步解决任务的计划，你必须遵循:
 <detailed_plan>{detailed_plan}<detailed_plan>
         """
 
         observe_prompt = f"""
-Please act as a web agent to help me complete the following high-level task:
+请作为一个网页代理来帮助我完成以下高级任务:
 <task>{task_prompt}</task>
-Now, I have made screenshot (only the current viewport, not the full webpage)
-based on the current browser state, and marked interactive elements in the
-webpage.
-Please carefully examine the requirements of the task, and current state of
-the browser, and provide the next appropriate action to take.
+现在,我已经基于当前浏览器状态制作了截图(仅当前视口,非整个网页),并标记了网页中的交互元素。
+请仔细检查任务要求和浏览器的当前状态,并提供下一个适当的操作。
 
 {detailed_plan_prompt}
 
-Here are the current available browser functions you can use:
+以下是当前可用的浏览器功能:
 {AVAILABLE_ACTIONS_PROMPT}
 
-Here are the latest {self.history_window} trajectory (at most) you have taken:
+以下是您最近执行的{self.history_window}个轨迹(最多):
 <history>
 {self.history[-self.history_window:]}
 </history>
 
-Your output should be in json format, including the following fields:
-- `observation`: The detailed image description about the current viewport. Do
-not over-confident about the correctness of the history actions. You should
-always check the current viewport to make sure the correctness of the next
-action.
-- `reasoning`: The reasoning about the next action you want to take, and the
-possible obstacles you may encounter, and how to solve them. Do not forget to
-check the history actions to avoid the same mistakes.
-- `action_code`: The action code you want to take. It is only one step action
-code, without any other texts (such as annotation)
+您的输出应该是json格式,包含以下字段:
+- `observation`: 关于当前视口的详细图像描述。不要对历史操作的正确性过于自信。您应该始终检查当前视口以确保下一个操作的正确性。
+- `reasoning`: 关于您想要采取的下一个操作的推理,可能遇到的障碍,以及如何解决这些障碍。不要忘记检查历史操作以避免相同的错误。
+- `action_code`: 您想要采取的操作代码。这只是一个步骤的操作代码,不包含任何其他文本(如注释)
 
-Here is two example of the output:
+这是输出的两个示例:
 ```json
 {{
-    "observation": [IMAGE_DESCRIPTION],
-    "reasoning": [YOUR_REASONING],
+    "observation": [图像描述],
+    "reasoning": [您的推理],
     "action_code": "fill_input_id([ID], [TEXT])"
 }}
 
 {{
-    "observation":  "The current page is a CAPTCHA verification page on Amazon. It asks the user to ..",
-    "reasoning": "To proceed with the task of searching for products, I need to complete..",
+    "observation": "当前页面是亚马逊的验证码验证页面。它要求用户...",
+    "reasoning": "为了继续搜索产品的任务,我需要完成...",
     "action_code": "fill_input_id(3, 'AUXPMR')"
 }}
 
-Here are some tips for you:
-- Never forget the overall question: **{task_prompt}**
-- Maybe after a certain operation (e.g. click_id), the page content has not
-changed. You can check whether the action step is successful by looking at the
-`success` of the action step in the history. If successful, it means that the
-page content is indeed the same after the click. You need to try other methods.
-- If using one way to solve the problem is not successful, try other ways.
-Make sure your provided ID is correct!
-- Some cases are very complex and need to be achieve by an iterative process.
-You can use the `back()` function to go back to the previous page to try other
-methods.
-- There are many links on the page, which may be useful for solving the
-problem. You can use the `click_id()` function to click on the link to see if
-it is useful.
-- Always keep in mind that your action must be based on the ID shown in the
-current image or viewport, not the ID shown in the history.
-- Do not use `stop()` lightly. Always remind yourself that the image only
-shows a part of the full page. If you cannot find the answer, try to use
-functions like `scroll_up()` and `scroll_down()` to check the full content of
-the webpage before doing anything else, because the answer or next key step
-may be hidden in the content below.
-- If the webpage needs human verification, you must avoid processing it.
-Please use `back()` to go back to the previous page, and try other ways.
-- If you have tried everything and still cannot resolve the issue, please stop
-the simulation, and report issues you have encountered.
-- Check the history actions carefully, detect whether you have repeatedly made
-the same actions or not.
-- When dealing with wikipedia revision history related tasks, you need to
-think about the solution flexibly. First, adjust the browsing history
-displayed on a single page to the maximum, and then make use of the
-find_text_on_page function. This is extremely useful which can quickly locate
-the text you want to find and skip massive amount of useless information.
-- Flexibly use interactive elements like slide down selection bar to filter
-out the information you need. Sometimes they are extremely useful.
+以下是一些提示:
+- 永远不要忘记总体问题: **{task_prompt}**
+- 也许在某些操作(例如click_id)之后,页面内容没有改变。您可以通过查看历史记录中操作步骤的`success`来检查操作步骤是否成功。如果成功,这意味着点击后页面内容确实相同。您需要尝试其他方法。
+- 如果使用一种方法解决问题不成功,请尝试其他方法。确保您提供的ID是正确的!
+- 有些情况非常复杂,需要通过迭代过程来实现。您可以使用`back()`函数返回上一页尝试其他方法。
+- 页面上有许多链接,这些链接可能对解决问题有用。您可以使用`click_id()`函数点击链接看看是否有用。
+- 始终记住您的操作必须基于当前图像或视口中显示的ID,而不是历史记录中显示的ID。
+- 不要轻易使用`stop()`。始终提醒自己图像只显示了完整页面的一部分。如果找不到答案,在做其他事情之前,请尝试使用`scroll_up()`和`scroll_down()`等功能检查网页的完整内容,因为答案或下一个关键步骤可能隐藏在下面的内容中。
+- 如果网页需要人工验证,您必须避免处理它。请使用`back()`返回上一页,并尝试其他方法。
+- 如果您已经尝试了所有方法仍然无法解决问题,请停止模拟,并报告您遇到的问题。
+- 仔细检查历史操作,检测是否重复执行了相同的操作。
+- 在处理维基百科修订历史相关任务时,您需要灵活思考解决方案。首先,将单页显示的浏览历史调整到最大,然后利用find_text_on_page功能。这非常有用,可以快速定位您想要找到的文本,跳过大量无用信息。
+- 灵活使用下拉选择栏等交互元素来筛选所需信息。有时它们非常有用。
 ```
         """
 
@@ -1298,17 +1281,12 @@ out the information you need. Sometimes they are extremely useful.
             )
 
     def _get_final_answer(self, task_prompt: str) -> str:
-        r"""Get the final answer based on the task prompt and current browser state.
-        It is used when the agent thinks that the task can be completed without any further action, and answer can be directly found in the current viewport.
-        """
-
         prompt = f"""
-We are solving a complex web task which needs multi-step browser interaction. After the multi-step observation, reasoning and acting with web browser, we think that the task is currently solved.
-Here are all trajectory we have taken:
+我们正在解决一个需要多步浏览器交互的复杂网页任务。经过多步观察、推理和与浏览器的交互后，我们认为任务已经完成。
+以下是我们执行过的所有轨迹：
 <history>{self.history}</history>
-Please find the final answer, or give valuable insights and founds (e.g. if previous actions contain downloading files, your output should include the path of the downloaded file) about the overall task: <task>{task_prompt}</task>
+请找出最终答案，或者提供有价值的见解和发现（例如，如果之前的操作包含下载文件，您的输出应该包含下载文件的路径）关于整体任务：<task>{task_prompt}</task>
         """
-
         message = BaseMessage.make_user_message(
             role_name='user',
             content=prompt,
@@ -1318,23 +1296,22 @@ Please find the final answer, or give valuable insights and founds (e.g. if prev
         return resp.msgs[0].content
 
     def _make_reflection(self, task_prompt: str) -> str:
-        r"""Make a reflection about the current state and the task prompt."""
-
         reflection_prompt = f"""
-Now we are working on a complex task that requires multi-step browser interaction. The task is: <task>{task_prompt}</task>
-To achieve this goal, we have made a series of observations, reasonings, and actions. We have also made a reflection on previous states.
+现在我们正在处理一个需要多步浏览器交互的复杂任务。任务是：<task>{task_prompt}</task>
+为了实现这个目标，我们已经进行了一系列的观察、推理和操作。我们也对之前的状态进行了反思。
 
-Here are the global available browser functions we can use:
+以下是我们可以使用的全局浏览器功能：
 {AVAILABLE_ACTIONS_PROMPT}
 
-Here are the latest {self.history_window} trajectory (at most) we have taken:
+以下是我们最近执行的{self.history_window}个轨迹（最多）：
 <history>{self.history[-self.history_window:]}</history>
 
-The image provided is the current state of the browser, where we have marked interactive elements. 
-Please carefully examine the requirements of the task, and the current state of the browser, and then make reflections on the previous steps, thinking about whether they are helpful or not, and why, offering detailed feedback and suggestions for the next steps.
-Your output should be in json format, including the following fields:
-- `reflection`: The reflection about the previous steps, thinking about whether they are helpful or not, and why, offering detailed feedback.
-- `suggestion`: The suggestion for the next steps, offering detailed suggestions, including the common solutions to the overall task based on the current state of the browser.
+提供的图像是浏览器的当前状态，我们已经标记了交互元素。
+请仔细检查任务要求和浏览器的当前状态，然后对之前的步骤进行反思，思考它们是否有帮助以及原因，提供详细的反馈和对下一步的建议。
+
+您的输出应该是json格式，包含以下字段：
+- `reflection`: 关于之前步骤的反思，思考它们是否有帮助以及原因，提供详细的反馈。
+- `suggestion`: 对下一步的建议，提供详细的建议，包括基于浏览器当前状态的整体任务的常见解决方案。
         """
         som_image, _ = self.browser.get_som_screenshot()
         img = _reload_image(som_image)
@@ -1348,19 +1325,13 @@ Your output should be in json format, including the following fields:
         return resp.msgs[0].content
 
     def _task_planning(self, task_prompt: str, start_url: str) -> str:
-        r"""Plan the task based on the given task prompt."""
-
-        # Here are the available browser functions we can use: {AVAILABLE_ACTIONS_PROMPT}
-
         planning_prompt = f"""
 <task>{task_prompt}</task>
-According to the problem above, if we use browser interaction, what is the general process of the interaction after visiting the webpage `{start_url}`? 
+根据上述问题，如果我们使用浏览器交互，在访问网页 `{start_url}` 后的一般交互过程是什么？
 
-Please note that it can be viewed as Partially Observable MDP. Do not over-confident about your plan.
-Please first restate the task in detail, and then provide a detailed plan to solve the task.
-"""
-        # Here are some tips for you: Please note that we can only see a part of the full page because of the limited viewport after an action. Thus, do not forget to use methods like `scroll_up()` and `scroll_down()` to check the full content of the webpage, because the answer or next key step may be hidden in the content below.
-
+请注意，这可以被视为部分可观察马尔可夫决策过程。不要对您的计划过于自信。
+请首先详细重述任务，然后提供详细的解决方案计划。
+        """
         message = BaseMessage.make_user_message(
             role_name='user', content=planning_prompt
         )
@@ -1371,35 +1342,24 @@ Please first restate the task in detail, and then provide a detailed plan to sol
     def _task_replanning(
         self, task_prompt: str, detailed_plan: str
     ) -> Tuple[bool, str]:
-        r"""Replan the task based on the given task prompt.
-
-        Args:
-            task_prompt (str): The original task prompt.
-            detailed_plan (str): The detailed plan to replan.
-
-        Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating whether the task needs to be replanned, and the replanned schema.
-        """
-
-        # Here are the available browser functions we can use: {AVAILABLE_ACTIONS_PROMPT}
         replanning_prompt = f"""
-We are using browser interaction to solve a complex task which needs multi-step actions.
-Here are the overall task:
+我们正在使用浏览器交互来解决一个需要多步操作的复杂任务。
+以下是整体任务：
 <overall_task>{task_prompt}</overall_task>
 
-In order to solve the task, we made a detailed plan previously. Here is the detailed plan:
+为了解决这个任务，我们之前制定了一个详细计划。以下是该计划：
 <detailed plan>{detailed_plan}</detailed plan>
 
-According to the task above, we have made a series of observations, reasonings, and actions. Here are the latest {self.history_window} trajectory (at most) we have taken:
+根据上述任务，我们已经进行了一系列观察、推理和操作。以下是我们最近执行的{self.history_window}个轨迹（最多）：
 <history>{self.history[-self.history_window:]}</history>
 
-However, the task is not completed yet. As the task is partially observable, we may need to replan the task based on the current state of the browser if necessary.
-Now please carefully examine the current task planning schema, and our history actions, and then judge whether the task needs to be fundamentally replanned. If so, please provide a detailed replanned schema (including the restated overall task).
+然而，任务尚未完成。由于任务是部分可观察的，如果必要的话，我们可能需要根据浏览器的当前状态重新规划任务。
+现在请仔细检查当前的任务规划方案和我们的历史操作，然后判断任务是否需要从根本上重新规划。如果需要，请提供详细的重新规划方案（包括重述的整体任务）。
 
-Your output should be in json format, including the following fields:
-- `if_need_replan`: bool, A boolean value indicating whether the task needs to be fundamentally replanned.
-- `replanned_schema`: str, The replanned schema for the task, which should not be changed too much compared with the original one. If the task does not need to be replanned, the value should be an empty string. 
-"""
+您的输出应该是json格式，包含以下字段：
+- `if_need_replan`: bool, 一个布尔值，表示任务是否需要从根本上重新规划。
+- `replanned_schema`: str, 任务的重新规划方案，与原方案相比不应该有太大变化。如果任务不需要重新规划，该值应为空字符串。
+        """
         resp = self.planning_agent.step(replanning_prompt)
         resp_dict = _parse_json_output(resp.msgs[0].content)
 
@@ -1483,7 +1443,7 @@ Your output should be in json format, including the following fields:
 
         if not task_completed:
             simulation_result = f"""
-                The task is not completed within the round limit. Please check the last round {self.history_window} information to see if there is any useful information:
+                任务未在轮次限制内完成。请检查最后{self.history_window}轮的信息，看看是否有任何有用的信息：
                 <history>{self.history[-self.history_window:]}</history>
             """
 

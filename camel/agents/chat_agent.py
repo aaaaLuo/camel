@@ -457,8 +457,7 @@ class ChatAgent(BaseAgent):
             return self._original_system_message
 
         language_prompt = (
-            "\nRegardless of the input language, "
-            f"you must output text in {self._output_language}."
+            "\n不管输入语言是什么，你必须以中文输出文本。如果返回内含有方法、函数、属性这些必须是英文。"
         )
 
         if self._original_system_message is not None:

@@ -450,8 +450,11 @@ class RolePlaying:
             BaseMessage: A single `BaseMessage` representing the initial
                 message.
         """
+        # 1. 重置助手和用户代理的状态
         self.assistant_agent.reset()
         self.user_agent.reset()
+
+        # 2. 设置默认的初始消息内容
         default_init_msg_content = (
             "Now start to give me instructions one by one. "
             "Only reply with Instruction and Input."
@@ -459,6 +462,7 @@ class RolePlaying:
         if init_msg_content is None:
             init_msg_content = default_init_msg_content
 
+        # 3. 创建并返回助手的初始消息
         # Initialize a message sent by the assistant
         init_msg = BaseMessage.make_assistant_message(
             role_name=getattr(self.assistant_sys_msg, 'role_name', None)
