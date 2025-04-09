@@ -655,14 +655,14 @@ class BaseBrowser:
 
         return typed_results  # type: ignore[return-value]
 
-    def get_som_screenshot(self, save_image: bool = False) -> Tuple[Image.Image, Union[str, None]]:
+    def get_som_screenshot(self, save_image: bool = False) -> Tuple[Image.Image, Union[str, None], Dict[str, InteractiveRegion]]:
         """获取带有交互元素标记的当前视口截图
         
         Args:
             save_image (bool): 是否保存图片到缓存目录
             
         Returns:
-            Tuple[Image.Image, str]: 返回标记后的截图图像和保存路径(如果保存的话)
+            Tuple[Image.Image, str, Dict[str, InteractiveRegion]]: 返回标记后的截图图像、保存路径(如果保存的话)和可交互元素列表
         """
         # 1. 等待页面加载完成
         self._wait_for_load()
@@ -699,7 +699,7 @@ class BaseBrowser:
                 comp.save(f, "PNG")
             f.close()
 
-        return comp, file_path
+        return comp, file_path, rects
 
     def scroll_up(self) -> None:
         r"""Scroll up the page."""
@@ -1097,6 +1097,22 @@ class BrowserToolkit(BaseToolkit):
 <detailed_plan>{detailed_plan}<detailed_plan>
         """
 
+        # 获取当前状态截图和可交互元素
+        som_screenshot, _, interactive_elements = self.browser.get_som_screenshot(save_image=True)
+        img = _reload_image(som_screenshot)
+        
+        # 提取元素ID和类型信息
+        elements_info = []
+        for element_id, element_data in interactive_elements.items():
+            elements_info.append(int(element_id.strip()))
+
+        # 将元素信息添加到提示中
+        elements_prompt = f"""
+当前页面上的可交互元素列表：
+{elements_info}
+"""
+        
+        # 更新提示词
         observe_prompt = f"""
 请作为一个网页代理来帮助我完成以下高级任务:
 <task>{task_prompt}</task>
@@ -1107,7 +1123,7 @@ class BrowserToolkit(BaseToolkit):
 
 以下是当前可用的浏览器功能:
 {AVAILABLE_ACTIONS_PROMPT}
-
+# {elements_prompt}
 以下是您最近执行的{self.history_window}个轨迹(最多):
 <history>
 {self.history[-self.history_window:]}
@@ -1131,9 +1147,11 @@ class BrowserToolkit(BaseToolkit):
     "reasoning": "为了继续搜索产品的任务,我需要完成...",
     "action_code": "fill_input_id(3, 'AUXPMR')"
 }}
+```
 
 以下是一些提示:
 - 永远不要忘记总体问题: **{task_prompt}**
+- 使用上面提供的可交互元素列表来确保您使用的ID是真实存在的
 - 也许在某些操作(例如click_id)之后,页面内容没有改变。您可以通过查看历史记录中操作步骤的`success`来检查操作步骤是否成功。如果成功,这意味着点击后页面内容确实相同。您需要尝试其他方法。
 - 如果使用一种方法解决问题不成功,请尝试其他方法。确保您提供的ID是正确的!
 - 有些情况非常复杂,需要通过迭代过程来实现。您可以使用`back()`函数返回上一页尝试其他方法。
@@ -1145,12 +1163,9 @@ class BrowserToolkit(BaseToolkit):
 - 仔细检查历史操作,检测是否重复执行了相同的操作。
 - 在处理维基百科修订历史相关任务时,您需要灵活思考解决方案。首先,将单页显示的浏览历史调整到最大,然后利用find_text_on_page功能。这非常有用,可以快速定位您想要找到的文本,跳过大量无用信息。
 - 灵活使用下拉选择栏等交互元素来筛选所需信息。有时它们非常有用。
-```
         """
 
-        # get current state
-        som_screenshot, _ = self.browser.get_som_screenshot(save_image=True)
-        img = _reload_image(som_screenshot)
+        # 将截图和更新后的提示发送给模型
         message = BaseMessage.make_user_message(
             role_name='user', content=observe_prompt, image_list=[img]
         )
